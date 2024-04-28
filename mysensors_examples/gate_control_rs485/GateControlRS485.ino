@@ -10,7 +10,7 @@
 
 // Static Node ID
 // muss gesetzt werden damit Node gefunden wird durch Gateway und muss im Netzwerk eindeutig sein!
-#define MY_NODE_ID 89
+#define MY_NODE_ID 88
 
 // Define this to enables DE-pin management on defined pin
 #define MY_RS485_DE_PIN 2
@@ -25,6 +25,7 @@
 #define NUMBER_OF_RELAYS 2  // Total number of attached relays
 #define RELAY_ON 1          // GPIO value to write to turn on attached relay
 #define RELAY_OFF 0         // GPIO value to write to turn off attached relay
+#define RELAY_WAITTIME 200  // time to wait during switching, time in milliseconds
 bool ack = 1;               // set this to 1 if you want destination node to send ack back to this node
 
 // Internal representation of the cover state.
@@ -72,16 +73,9 @@ void presentation() {
 
 void loop() {
   if (!initialValueSent) {
+    Serial.println("Sending initial value");
     sendState();
     initialValueSent = true;
-  }
-  if (!initialValueSent) {
-    Serial.println("Sending initial value");
-//    for (int sensor = 1, pin = RELAY_PIN; sensor <= NUMBER_OF_RELAYS; sensor++, pin++) {
-//      send(msg[sensor - 1].set(loadState(sensor) ? RELAY_ON : RELAY_OFF));
-//    }
-    initialValueSent = true;
-    Serial.println("Sending initial value: Completed");
   }
 }
 
@@ -93,11 +87,13 @@ void receive(const MyMessage &message) {
     digitalWrite(RELAY_PIN + 1, RELAY_OFF);
     digitalWrite(RELAY_PIN + 0, RELAY_ON);
     // wait time
-    sleep(200);
-    digitalWrite(RELAY_PIN + 1, RELAY_ON);
+    sleep(RELAY_WAITTIME);
+    digitalWrite(RELAY_PIN + 0, RELAY_OFF);
     Serial.print("gate opened\n");
+    state = UP;
+    status = 1;
+    sendState();
   }
-
   if (message.type == V_DOWN) {
     // close gate
     // open gate
@@ -105,8 +101,8 @@ void receive(const MyMessage &message) {
     digitalWrite(RELAY_PIN + 1, RELAY_OFF);
     digitalWrite(RELAY_PIN + 0, RELAY_ON);
     // wait time
-    sleep(200);
-    digitalWrite(RELAY_PIN + 1, RELAY_ON);
+    sleep(RELAY_WAITTIME);
+    digitalWrite(RELAY_PIN + 0, RELAY_OFF);
 
     // general wait
     Serial.print("Wait before closing\n");
@@ -117,8 +113,27 @@ void receive(const MyMessage &message) {
     digitalWrite(RELAY_PIN + 1, RELAY_ON);
     digitalWrite(RELAY_PIN + 0, RELAY_ON);
     // wait time
-    sleep(200);
-    digitalWrite(RELAY_PIN + 1, RELAY_ON);
+    sleep(RELAY_WAITTIME);
+    digitalWrite(RELAY_PIN + 0, RELAY_OFF);
+    state = DOWN;
+    status = 0;
+    sendState();
   }
-
+  if (message.type == V_STOP) {
+    Serial.print("start/stop gate\n");
+    if( state == UP) {
+      state = DOWN;
+    }
+    if( state == DOWN) state = UP;
+    state = IDLE;
+    // start/stop gate
+    Serial.print("start closing gate\n");
+    digitalWrite(RELAY_PIN + 1, RELAY_ON);
+    digitalWrite(RELAY_PIN + 0, RELAY_ON);
+    // wait time
+    sleep(200);
+    digitalWrite(RELAY_PIN + 0, RELAY_OFF);
+    status = (state+1)%2;
+    sendState();
+  }
 }
